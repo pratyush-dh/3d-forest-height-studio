@@ -42,6 +42,8 @@ A guided, step-by-step workflow (you can go back to any step):
 - **R code tab**: a standalone, path-free R script that reproduces the map, plus a 2D publication map. Edit its settings
   block to run your own experiments outside the app.
 
+**New here? Follow the [step-by-step tutorial](docs/TUTORIAL.md)**, which maps Florida from install to export, with screenshots.
+
 ## Download and install (Windows, no R needed)
 
 1. Download **3D-Forest-Height-Studio-Setup-x.y.z.exe** from the

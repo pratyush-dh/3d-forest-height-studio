@@ -52,6 +52,17 @@ free_space <- function(dir) {
     }, error = function(e) NA_real_, warning = function(w) NA_real_)
 }
 
+# free_space() starts a PowerShell process (~0.5-1 s). The tile page refreshes every 0.7 s during a download,
+# so remember the answer for a while instead of asking again on every refresh.
+.free_cache <- new.env()
+free_space_cached <- function(dir, max_age = 20) {
+    now <- as.numeric(Sys.time())
+    if (identical(.free_cache$dir, dir) && !is.null(.free_cache$t) && now - .free_cache$t < max_age) return(.free_cache$val)
+    v <- free_space(dir)
+    .free_cache$dir <- dir; .free_cache$t <- now; .free_cache$val <- v
+    v
+}
+
 cached_canopy <- function(iso3, regions, mainland, detail, project, poly, tile_dir, progress) {
     key <- paste("v2", iso3, paste(sort(regions), collapse = "|"), mainland, detail, project)
     kf <- tempfile(); writeLines(key, kf)
@@ -112,6 +123,8 @@ ui <- page_fluid(
             table.tiles td,table.tiles th{padding:5px 8px;border-bottom:1px solid #eee}
             .progress-lg{height:18px}
             #runner{width:100%;max-width:640px;display:block;margin:10px auto 0;border-radius:8px;border:1px solid #cfe0d5;background:#f3f8f4;cursor:pointer}
+            /* the tile list refreshes every 0.7 s while downloading; Shiny's default 30% fade makes it flicker */
+            #tile_summary.recalculating,#tile_map.recalculating,#tile_table.recalculating,#dl_progress.recalculating,#tile_actions.recalculating{opacity:1}
             .stepper a.stp{text-decoration:none;display:block}
             .stepper a.stp.go{cursor:pointer}
             .stepper a.stp.go:hover{background:#b9d6c3}
@@ -479,7 +492,7 @@ server <- function(input, output, session) {
         ts <- tstate()
         todo <- ts[!ts$ok, ]
         need <- sum(ifelse(is.na(todo$remote), 250e6, todo$remote))
-        free <- free_space(input$tile_dir)
+        free <- free_space_cached(input$tile_dir)
         checking <- length(size_jobs()) > 0
         tagList(
             p(HTML(sprintf(
