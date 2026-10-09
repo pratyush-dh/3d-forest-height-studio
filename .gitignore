@@ -1,0 +1,15 @@
+# Downloaded data and caches (several GB) - created at runtime
+data/
+cache/
+output/
+
+# R / RStudio
+.Rhistory
+.RData
+.Rproj.user/
+Rplots.pdf
+*.Rproj
+
+# Large rasters
+*.tif
+*.tiff
