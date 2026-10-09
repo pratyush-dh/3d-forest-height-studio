@@ -1,8 +1,11 @@
 ; Inno Setup script for 3D Forest Height Studio.
 ; Build:  ISCC.exe packaging\installer.iss          (after packaging\build.ps1 has produced dist\)
 ;         ISCC.exe /DAppVersion=1.2.3 packaging\installer.iss
+; Default: read the version from the bundle that build.ps1 produced, so installer name and app can never disagree.
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define VerFile FileOpen(SourcePath + "..\dist\VERSION")
+  #define AppVersion Trim(FileRead(VerFile))
+  #expr FileClose(VerFile)
 #endif
 #define AppName "3D Forest Height Studio"
 #define RepoUrl "https://github.com/pratyush-dh/3d-forest-height-studio"

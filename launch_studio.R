@@ -24,8 +24,24 @@ open_window <- function(url) {
     if (nzchar(Sys.getenv("STUDIO_NO_WINDOW"))) return(invisible(NULL)) # used by automated tests
     exe <- find_browser()
     if (is.na(exe)) return(utils::browseURL(url))
-    system2(exe, c(paste0("--app=", url), paste0("--user-data-dir=", file.path(data_root, "window-profile")),
-        "--window-size=1500,950", "--no-first-run", "--no-default-browser-check"), wait = FALSE)
+    profile <- file.path(data_root, "window-profile")
+    dir.create(profile, showWarnings = FALSE, recursive = TRUE)
+    args <- c(
+        paste0("--app=", url),
+        paste0("--user-data-dir=", normalizePath(profile, winslash = "\\", mustWork = FALSE)),
+        "--window-size=1500,950",
+        "--no-first-run", "--no-default-browser-check",
+        # The app window uses its own, empty browser profile. Without these two flags Edge signs that new
+        # profile in with the Windows account, syncs it and installs the user's extensions, whose welcome
+        # pages then open on top of the app.
+        "--disable-sync", "--disable-extensions"
+    )
+    extra <- Sys.getenv("STUDIO_EDGE_ARGS")           # for automated tests only, e.g. --remote-debugging-port=9444
+    if (nzchar(extra)) args <- c(args, strsplit(trimws(extra), " +")[[1]])
+    # system2() does NOT quote arguments: a path with spaces ("3D Forest Height Studio") would be split into several
+    # arguments, and Edge would open the pieces as web pages. Quote anything that contains whitespace.
+    args <- vapply(args, function(a) if (grepl("[[:space:]]", a)) shQuote(a, type = "cmd") else a, character(1), USE.NAMES = FALSE)
+    system2(exe, args, wait = FALSE)
 }
 
 is_alive <- function(port) {

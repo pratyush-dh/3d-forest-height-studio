@@ -19,7 +19,7 @@ root_dir <- if (file.exists(file.path(app_dir, "R", "canopy_functions.R"))) app_
 source(file.path(root_dir, "R", "canopy_functions.R"))
 source(file.path(root_dir, "R", "script_export.R"))
 
-APP_VERSION <- "1.0.0"
+APP_VERSION <- "1.0.1"
 
 # Where downloaded data lives. The installed app sets STUDIO_DATA_DIR to a per-user folder
 # (the program folder is read-only); when run from source it stays inside the repository.

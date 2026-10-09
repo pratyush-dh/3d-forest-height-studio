@@ -77,6 +77,34 @@ jobs:
           if (-not $r) { throw "the bundled R is not the one running" }
           Write-Host "Smoke test passed on port $port using $($r[0].ExecutablePath)"
 
+      - name: Real window test - Edge must open exactly the app, nothing else
+        shell: pwsh
+        run: |
+          # The earlier smoke test skips the browser window (STUDIO_NO_WINDOW). A path with spaces once got split into several
+          # Edge arguments, which opened stray pages and installed the user's extensions. Launch the real window and inspect it.
+          Get-Process Rscript -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          Remove-Item Env:STUDIO_NO_WINDOW -ErrorAction SilentlyContinue
+          $env:STUDIO_EDGE_ARGS = "--remote-debugging-port=9444 --headless=new"
+          $dir = Join-Path $env:RUNNER_TEMP "studio-install"
+          Start-Process wscript.exe -ArgumentList "`"$dir\Studio.vbs`""
+          $pages = $null
+          foreach ($i in 1..60) {
+            try { $pages = Invoke-RestMethod "http://127.0.0.1:9444/json" -TimeoutSec 3; if (@($pages | Where-Object { $_.type -eq "page" -and $_.url -like "http://127.0.0.1*" }).Count -ge 1) { break } } catch {}
+            Start-Sleep -Seconds 2
+          }
+          Start-Sleep -Seconds 10   # give any stray welcome pages time to appear
+          $pages = Invoke-RestMethod "http://127.0.0.1:9444/json"
+          $open = @($pages | Where-Object { $_.type -eq "page" })
+          $open | ForEach-Object { Write-Host "page: $($_.url)" }
+          if ($open.Count -ne 1) { throw "Edge opened $($open.Count) pages; expected exactly 1" }
+          $cmd = (Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -match "--app=http://127.0.0.1" } | Select-Object -First 1).CommandLine
+          Write-Host $cmd
+          if ($cmd -notmatch '"--user-data-dir=[^"]*3D Forest Height Studio[^"]*window-profile"') { throw "--user-data-dir is not quoted as one argument" }
+          if ($cmd -notmatch "--disable-sync" -or $cmd -notmatch "--disable-extensions") { throw "sync/extensions are not disabled" }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA "3D")) { throw "a stray profile folder named '3D' was created" }
+          Write-Host "Real window test passed"
+
       - name: Checksums
         shell: pwsh
         run: |
