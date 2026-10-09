@@ -42,7 +42,24 @@ A guided, step-by-step workflow (you can go back to any step):
 - **R code tab**: a standalone, path-free R script that reproduces the map, plus a 2D publication map. Edit its settings
   block to run your own experiments outside the app.
 
-## Requirements
+## Download and install (Windows, no R needed)
+
+1. Download **3D-Forest-Height-Studio-Setup-x.y.z.exe** from the
+   [latest release](https://github.com/pratyush-dh/3d-forest-height-studio/releases/latest) (about 140 MB).
+2. Run it. No administrator rights are needed; it installs for your user only and adds a Start menu entry.
+3. Start **3D Forest Height Studio** from the Start menu. It opens in its own window.
+
+It bundles R and every package it needs, so there is nothing else to install. Downloaded map data is stored in
+`%LOCALAPPDATA%D Forest Height Studio`, and the uninstaller asks before removing it.
+
+> The installer is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC".
+> Choose **More info -> Run anyway**. The file's SHA-256 checksum is published with each release.
+
+macOS and Linux: run from source (below). Details on how the installer is built are in [packaging/](packaging/README.md).
+
+## Run from source (any OS)
+
+### Requirements
 
 - **R** (developed and tested on R 4.6.1). RStudio is optional.
 - An internet connection (boundaries, tile downloads, and the 3D engine in the browser).
@@ -51,7 +68,7 @@ A guided, step-by-step workflow (you can go back to any step):
 - R packages are installed on first launch by the Setup step (`sf`, `terra`, `geodata`, `classInt`, `jsonlite`, `callr`,
   plus `shiny` and `bslib`). On Linux, `sf` and `terra` need the system GDAL, GEOS and PROJ libraries.
 
-## Run it
+### Run it
 
 ```r
 # from the repository folder
@@ -75,7 +92,8 @@ It opens in your browser at <http://127.0.0.1:4821>.
 ## Repository layout
 
 ```
-run_app.R                         launcher
+run_app.R                         launcher for running from source
+launch_studio.R                   launcher used by the installed app (free port, app window, auto-close)
 app/app.R                         the Shiny app (step-by-step workflow)
 app/www/viewer.js                 live 3D viewer (three.js): lighting, classes, grid, scale bar, locator
 app/www/exporter.js               builds the shareable interactive HTML page
@@ -83,6 +101,9 @@ app/www/studio.js, runner.js      tabs / code export glue, and the waiting-room 
 app/templates/replicate_template.R  template for the generated R script
 R/canopy_functions.R              region, tile and canopy-layer pipeline
 R/script_export.R                 generates the standalone R script
+app/www/vendor/three/            bundled 3D engine (three.js, MIT)
+packaging/                        Windows installer: build script, Inno Setup definition, launcher, icon
+.github/workflows/release.yml     builds and publishes the installer on version tags
 ```
 
 ## License

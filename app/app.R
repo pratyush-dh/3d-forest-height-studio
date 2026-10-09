@@ -19,9 +19,20 @@ root_dir <- if (file.exists(file.path(app_dir, "R", "canopy_functions.R"))) app_
 source(file.path(root_dir, "R", "canopy_functions.R"))
 source(file.path(root_dir, "R", "script_export.R"))
 
-cache_dir <- file.path(root_dir, "cache")
+APP_VERSION <- "1.0.0"
+
+# Where downloaded data lives. The installed app sets STUDIO_DATA_DIR to a per-user folder
+# (the program folder is read-only); when run from source it stays inside the repository.
+data_root <- Sys.getenv("STUDIO_DATA_DIR", unset = root_dir)
+cache_dir <- file.path(data_root, "cache")
 dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-default_tile_dir <- file.path(root_dir, "data", "tiles")
+default_tile_dir <- file.path(data_root, "data", "tiles")
+
+# Installed app only: stop R when the last app window closes (STUDIO_AUTOCLOSE is set by the launcher).
+autoclose <- nzchar(Sys.getenv("STUDIO_AUTOCLOSE"))
+sessions_open <- 0L
+ever_connected <- FALSE
+if (autoclose) later::later(function() if (!ever_connected) shiny::stopApp(), 180) # window never opened
 
 PKGS <- c("sf", "terra", "geodata", "classInt", "jsonlite", "callr")
 STEPS <- c("Setup", "Region", "Tiles", "Build", "Explore")
@@ -81,8 +92,8 @@ ui <- page_fluid(
     tags$head(
         tags$title("3D Forest Height Studio"),
         tags$script(type = "importmap", HTML('{"imports":{
-            "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-            "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}')),
+            "three":"./vendor/three/three.module.js",
+            "three/addons/":"./vendor/three/addons/"}}')),
         tags$script(type = "module", src = "viewer.js"),
         tags$script(src = "runner.js", defer = NA),
         tags$script(src = "exporter.js"),
@@ -285,11 +296,19 @@ ui <- page_fluid(
     div(class = "credits",
         "Visualisation concept & original R tutorial: ",
         tags$a(href = "https://github.com/milos-agathon/3d-forest-height-maps", target = "_blank", "Milos Popovic (milos-agathon/3d-forest-height-maps)"),
-        " · Canopy height: ETH Zurich Global Canopy Height 2020 (Lang et al., 2023, Nature Ecology & Evolution) · Boundaries: GADM 4.1")
+        " · Canopy height: ETH Zurich Global Canopy Height 2020 (Lang et al., 2023, Nature Ecology & Evolution) · Boundaries: GADM 4.1 \u00b7 v", APP_VERSION)
 )
 
 # -------------------------------------------------------------- server --
 server <- function(input, output, session) {
+    if (autoclose) {
+        sessions_open <<- sessions_open + 1L
+        ever_connected <<- TRUE
+        session$onSessionEnded(function() {
+            sessions_open <<- sessions_open - 1L
+            later::later(function() if (sessions_open <= 0L) shiny::stopApp(), 10) # grace period for page reloads
+        })
+    }
     step <- reactiveVal(1)
     output$step <- renderText(step())
     outputOptions(output, "step", suspendWhenHidden = FALSE)
@@ -392,7 +411,11 @@ server <- function(input, output, session) {
     }, res = 96)
 
     observeEvent(input$find_tiles, {
-        pl <- sel_poly(); req(pl)
+        pl <- tryCatch(sel_poly(), error = function(e) NULL) # silent req() errors land here too
+        if (is.null(pl)) {
+            return(showNotification("Still preparing the region outline - give it a moment, then press the button again.",
+                type = "warning"))
+        }
         bx <- tile_boxes(pl)
         tt <- bx[bx$hit, ]
         tt <- data.frame(name = tt$name, url = tt$url, remote = NA_real_, stringsAsFactors = FALSE)

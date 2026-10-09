@@ -105,8 +105,8 @@ ${opts.controls ? CONTROLS_JS : ''}
             if (iv.embed_bundle) {
                 try {
                     importMap = { imports: {
-                        'three': await toDataUrl(THREE_URL),
-                        'three/addons/controls/OrbitControls.js': await toDataUrl(ORBIT_URL) } };
+                        'three': await toDataUrl('vendor/three/three.module.js'),
+                        'three/addons/controls/OrbitControls.js': await toDataUrl('vendor/three/addons/controls/OrbitControls.js') } };
                     bundled = true;
                 } catch (e) { note.textContent = 'Could not bundle three.js; using the CDN instead. '; }
             }

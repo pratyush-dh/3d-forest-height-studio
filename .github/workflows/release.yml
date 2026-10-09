@@ -1,0 +1,101 @@
+name: Build Windows installer
+
+# Builds the offline installer on a clean Windows runner and attaches it to a GitHub Release.
+#   * push a tag like v1.0.0  -> builds, smoke-tests, creates/updates the Release with the installer
+#   * "Run workflow" button   -> builds and smoke-tests; the installer is kept as a workflow artifact only
+# NOTE: this workflow has not been run yet; the same steps were verified locally (see packaging/README.md).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the Release
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Work out the version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
+          else { $v = (Select-String -Path app/app.R -Pattern 'APP_VERSION <- "([^"]+)"').Matches[0].Groups[1].Value }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $v"
+
+      - name: Build the app bundle (portable R + packages + app)
+        shell: pwsh
+        run: ./packaging/build.ps1 -Version "${{ steps.ver.outputs.version }}"
+
+      - name: Compile the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-ChildItem release | ForEach-Object { "{0}  {1:N0} MB" -f $_.Name, ($_.Length / 1MB) }
+
+      - name: Smoke test - silent install, launch, check it serves
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem release -Filter "*.exe" | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "studio-install"
+          Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dir" -Wait
+          $env:STUDIO_NO_WINDOW = "1"
+          Start-Process wscript.exe -ArgumentList "`"$dir\Studio.vbs`""
+          $state = Join-Path $env:LOCALAPPDATA "3D Forest Height Studio\running-port.txt"
+          $ok = $false
+          foreach ($i in 1..90) {
+            if (Test-Path $state) {
+              $port = Get-Content $state -TotalCount 1
+              try { if ((Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200) { $ok = $true; break } } catch {}
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ok) { Get-Content (Join-Path $env:LOCALAPPDATA "3D Forest Height Studio\studio.log") -ErrorAction SilentlyContinue; throw "app did not start" }
+          foreach ($f in "viewer.js","vendor/three/three.module.js") {
+            $s = (Invoke-WebRequest "http://127.0.0.1:$port/$f" -UseBasicParsing).StatusCode
+            if ($s -ne 200) { throw "$f returned $s" }
+          }
+          $r = Get-CimInstance Win32_Process -Filter "Name='Rscript.exe'" | Where-Object { $_.ExecutablePath -like "$dir*" }
+          if (-not $r) { throw "the bundled R is not the one running" }
+          Write-Host "Smoke test passed on port $port using $($r[0].ExecutablePath)"
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Push-Location release
+          Get-ChildItem *.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Keep the installer as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release/*
+          retention-days: 14
+
+      - name: Publish the Release (tags only)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/SHA256SUMS.txt
+          generate_release_notes: true

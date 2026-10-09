@@ -13,3 +13,8 @@ Rplots.pdf
 # Large rasters
 *.tif
 *.tiff
+
+# Packaging output
+dist/
+release/
+packaging/studio-preview.png
